@@ -1,4 +1,6 @@
+import os
 import argparse
+import validators
 import numpy as np
 import math
 import timeit
@@ -75,7 +77,18 @@ if __name__ == '__main__':
     lstm = lstm.cuda()
 
     # Open Video
-    cap = VideoCapture(args.file)
+    if validators.url(args.file):
+        from pytube import YouTube
+        print('Downloading...')
+        yt = YouTube(args.file).streams.first()
+        f = yt.default_filename
+        if not os.path.exists(f):
+            yt.download()
+        print('f:', f)
+    else:
+        f = args.file
+
+    cap = VideoCapture(f)
     cap.open()
 
     f1, ax1 = plt.subplots(1, 3)
@@ -120,7 +133,7 @@ if __name__ == '__main__':
 
         if args.view:
             vcode = fpool.data[:, :args.nfeat2show, :, :].cpu()  # For inspection
-            f4 = f4.data[:, :args.nfeat2show, :, :].cpu().numpy()  # For inspection
+            f4 = f4.data[:, :, :, :].cpu().numpy()  # For inspection
             
             for b in range(args.buffsz):
                 plt.pause(0.0001) 
