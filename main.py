@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 
 from sensory.visual import VisualNetwork
 from temporary.con import Recog
+from memory.mem import GraphMemory
+from util.graph import draw_adjacency_matrix
 
 
 def np_to_tensor(nparray):
@@ -76,6 +78,9 @@ if __name__ == '__main__':
     lstm = Recog(2048, 512, 128)
     lstm = lstm.cuda()
 
+    # Define the memory graph
+    mem = GraphMemory(128)
+
     # Open Video
     if validators.url(args.file):
         from pytube import YouTube
@@ -92,7 +97,8 @@ if __name__ == '__main__':
     cap.open()
 
     f1, ax1 = plt.subplots(1, 3)
-    f2, ax2 = plt.subplots(2, 1)
+    # f2, ax2 = plt.subplots(2, 1)
+    f3, ax3 = plt.subplots(2, 1)
 
     plt.ion()
 
@@ -131,20 +137,27 @@ if __name__ == '__main__':
 
         fpool, f4 = visual_sensor(Variable(buffer, volatile=True))
 
-        if args.view:
-            vcode = fpool.data[:, :args.nfeat2show, :, :].cpu()  # For inspection
-            f4 = f4.data[:, :, :, :].cpu().numpy()  # For inspection
-            
-            for b in range(args.buffsz):
-                plt.pause(0.0001) 
-                lstm_out = lstm(fpool[b, ...].view(1, 1, -1))
-                lstm_out = lstm_out.data[0, :args.nfeat2show].cpu().numpy()  # For inspection
-                
+        vcode = fpool.data[:, :args.nfeat2show, :, :].cpu()  # For inspection
+        f4 = f4.data.cpu().numpy()  # For inspection
+        
+        for b in range(args.buffsz):
+            plt.pause(0.0001)
+
+            # Update temporary memory
+            encoding = fpool[b, ...]
+            lstm_out = lstm(encoding.view(1, 1, -1))
+            lstm_out2show = lstm_out.data[0, :args.nfeat2show].cpu().numpy()  # For inspection
+
+            # Update long term memory
+            mem.update(lstm_out.view(-1).data.cpu().numpy())
+
+            if args.view:
                 ax1[0].cla()
                 ax1[1].cla()
                 ax1[2].cla()
-                ax2[0].cla()
-                ax2[1].cla()
+                # ax2[0].cla()
+                # ax2[1].cla()
+                f3.gca().cla()
                 frame = image_buffer[b]
                 code = vcode[b, :, :, :].squeeze().cpu().numpy()
 
@@ -158,20 +171,25 @@ if __name__ == '__main__':
                 FPS = 1 / ((timeit.default_timer() - t_buffer_start) / frameidx)
                 ax1[0].text(40, 40, 'FPS:%.3f' % FPS, color='b')
                 
-                ax1[2].plot(lstm_out)            
-                feats2show, att = visualize_feats(f4[b, ...], args.nfeat2show)
-                ax2[0].imshow(feats2show, cmap='hot')
-                ax2[1].imshow(att, cmap='hot')
+                ax1[2].plot(lstm_out2show) 
+                # feats2show, att = visualize_feats(f4[b, ...], args.nfeat2show)
+                # ax2[0].imshow(feats2show)
+                # ax2[1].imshow(att)
+
+                ax3[0].imshow(mem.K, cmap='hot')
+                ax3[1].imshow(mem.M, cmap='hot')
                 
                 f1.show()
-                f2.show()
+                # f2.show() 
+                f3.show() 
                 f1.canvas.draw()
-                f2.canvas.draw() 
-        else:
-            FPS = 1 / ((timeit.default_timer() - t_buffer_start) / frameidx)
-            print('FPS:', FPS)
-                
-        # Clear the buffer
+                # f2.canvas.draw() 
+                f3.canvas.draw() 
+            else:
+                FPS = 1 / ((timeit.default_timer() - t_buffer_start) / frameidx)
+                print('FPS:', FPS)
+                    
+            # Clear the buffer
         bufferidx = 0
         image_buffer = [0] * args.buffsz
         buffer = torch.FloatTensor(args.buffsz, 3, image.shape[0], image.shape[1]).cuda()
